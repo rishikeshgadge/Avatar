@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { AvatarState, LanguageCode, ChatMessage, ServerHealth } from '../types';
-import { createSessionThread, sendUserMessage, fetchServerHealth } from '../services/api';
+import { createSession, sendUserMessage, fetchServerHealth } from '../services/api';
 import { useSpeechRecognition } from './useSpeechRecognition';
 import { useSpeechSynthesis } from './useSpeechSynthesis';
 import { AudioAnalyserHelper } from '../utils/audioVisualizer';
@@ -9,14 +9,21 @@ export function useVoiceAssistant() {
   const [avatarState, setAvatarState] = useState<AvatarState>('idle');
   const [language, setLanguage] = useState<LanguageCode>('en');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [threadId, setThreadId] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [micMuted, setMicMuted] = useState(false);
   const [micVolume, setMicVolume] = useState(0);
   const [lipSyncAmplitude, setLipSyncAmplitude] = useState(0);
   const [serverHealth, setServerHealth] = useState<ServerHealth | null>(null);
   const [sessionActive, setSessionActive] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const audioAnalyserRef = useRef<AudioAnalyserHelper | null>(null);
+  const sessionActiveRef = useRef(false);
+  const micMutedRef = useRef(false);
+
+  // Keep refs in sync with state
+  useEffect(() => { sessionActiveRef.current = sessionActive; }, [sessionActive]);
+  useEffect(() => { micMutedRef.current = micMuted; }, [micMuted]);
 
   // Initialize Audio Analyser
   useEffect(() => {
@@ -28,25 +35,25 @@ export function useVoiceAssistant() {
     };
   }, []);
 
-  // Fetch initial server health check & thread ID
+  // Fetch initial server health
   useEffect(() => {
     const init = async () => {
       const health = await fetchServerHealth();
       setServerHealth(health);
-      const tid = await createSessionThread();
-      setThreadId(tid);
+      const sid = await createSession();
+      setSessionId(sid);
     };
     init();
   }, []);
 
   // Speech Synthesis callback for end of AI speech
   const handleSpeechEnd = useCallback(() => {
-    if (sessionActive && !micMuted) {
+    if (sessionActiveRef.current && !micMutedRef.current) {
       setAvatarState('listening');
     } else {
       setAvatarState('idle');
     }
-  }, [sessionActive, micMuted]);
+  }, []);
 
   const { speakText, stopSpeaking, isSpeaking } = useSpeechSynthesis({
     language,
@@ -54,17 +61,20 @@ export function useVoiceAssistant() {
     onLipSyncFrame: (amp) => setLipSyncAmplitude(amp),
   });
 
+  const isSpeakingRef = useRef(false);
+  useEffect(() => { isSpeakingRef.current = isSpeaking; }, [isSpeaking]);
+
   // Handle final user transcript from Speech STT
   const handleTranscriptFinal = useCallback(
     async (userText: string) => {
-      if (!userText.trim()) return;
+      if (!userText.trim() || isProcessing) return;
 
-      // 1. Interrupt avatar if currently speaking
-      if (isSpeaking) {
+      // Interrupt avatar if currently speaking
+      if (isSpeakingRef.current) {
         stopSpeaking();
       }
 
-      // 2. Add user message to UI
+      // Add user message to UI
       const userMsg: ChatMessage = {
         id: `user_${Date.now()}`,
         sender: 'user',
@@ -75,13 +85,13 @@ export function useVoiceAssistant() {
 
       setMessages((prev) => [...prev, userMsg]);
       setAvatarState('thinking');
+      setIsProcessing(true);
 
-      // 3. Send message to Azure AI Foundry Agent backend
       try {
-        const currentTid = threadId || (await createSessionThread());
-        if (!threadId) setThreadId(currentTid);
+        const currentSid = sessionId || (await createSession());
+        if (!sessionId) setSessionId(currentSid);
 
-        const data = await sendUserMessage(currentTid, userText, language);
+        const data = await sendUserMessage(currentSid, userText, language);
 
         if (data.success && data.response) {
           const aiMsg: ChatMessage = {
@@ -96,11 +106,9 @@ export function useVoiceAssistant() {
 
           setMessages((prev) => [...prev, aiMsg]);
           setAvatarState('speaking');
-
-          // 4. Trigger speech synthesis & avatar lip movement
           speakText(data.response);
         } else {
-          throw new Error(data.error || 'Failed to receive response from Azure agent');
+          throw new Error(data.error || 'Failed to receive a response from AI');
         }
       } catch (err: any) {
         console.error('Agent interaction error:', err);
@@ -109,13 +117,24 @@ export function useVoiceAssistant() {
         const errorMsg: ChatMessage = {
           id: `err_${Date.now()}`,
           sender: 'assistant',
-          content: `⚠️ Error contacting Azure AI Foundry Agent: ${err.message || 'Unknown error'}`,
+          content: `⚠️ ${err.message || 'An error occurred. Please check your API configuration.'}`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         };
         setMessages((prev) => [...prev, errorMsg]);
+
+        // Return to listening after error
+        setTimeout(() => {
+          if (sessionActiveRef.current && !micMutedRef.current) {
+            setAvatarState('listening');
+          } else {
+            setAvatarState('idle');
+          }
+        }, 3000);
+      } finally {
+        setIsProcessing(false);
       }
     },
-    [isSpeaking, stopSpeaking, threadId, language, speakText]
+    [isProcessing, stopSpeaking, sessionId, language, speakText]
   );
 
   const { startListening, stopListening, isListening, interimTranscript, error: sttError } =
@@ -123,10 +142,12 @@ export function useVoiceAssistant() {
       language,
       onTranscriptFinal: handleTranscriptFinal,
       onSpeechStart: () => {
-        if (isSpeaking) {
+        if (isSpeakingRef.current) {
           stopSpeaking();
         }
-        setAvatarState('listening');
+        if (!isProcessing) {
+          setAvatarState('listening');
+        }
       },
     });
 
@@ -152,7 +173,9 @@ export function useVoiceAssistant() {
       audioAnalyserRef.current.stopMicrophone();
     }
     setMicVolume(0);
+    setLipSyncAmplitude(0);
     setAvatarState('stopped');
+    setIsProcessing(false);
   }, [stopSpeaking, stopListening]);
 
   // Toggle Microphone
@@ -162,17 +185,23 @@ export function useVoiceAssistant() {
       if (sessionActive) {
         setAvatarState('listening');
         startListening();
+        if (audioAnalyserRef.current) {
+          audioAnalyserRef.current.startMicrophone((vol) => setMicVolume(vol));
+        }
       }
     } else {
       setMicMuted(true);
       stopListening();
+      if (audioAnalyserRef.current) {
+        audioAnalyserRef.current.stopMicrophone();
+      }
+      setMicVolume(0);
       if (avatarState === 'listening') {
         setAvatarState('idle');
       }
     }
   }, [micMuted, sessionActive, avatarState, startListening, stopListening]);
 
-  // Direct manual message input (for typing in chat panel)
   const sendManualMessage = useCallback(
     (text: string) => {
       handleTranscriptFinal(text);
@@ -192,6 +221,7 @@ export function useVoiceAssistant() {
     interimTranscript,
     serverHealth,
     sttError,
+    isProcessing,
     handleStartSession,
     handleStopSession,
     toggleMic,

@@ -16,14 +16,15 @@ app.use('/api/agent', agentRoutes);
 app.use('/api/speech', speechRoutes);
 app.use('/api/history', historyRoutes);
 
-// Healthcheck & Config Info Endpoint
+// Healthcheck
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
     config: {
       simulationMode: config.simulationMode,
-      azureFoundryConnected: Boolean(config.azureFoundry.endpoint && config.azureFoundry.agentId),
+      aiConnected: Boolean(config.ai.apiUrl && config.ai.apiKey),
+      aiModel: config.ai.modelName || 'not-set',
       azureSpeechConnected: Boolean(config.azureSpeech.key),
       cosmosDbConnected: config.cosmosDb.enabled,
     },
@@ -34,9 +35,10 @@ const startServer = async () => {
   await connectDatabase();
   app.listen(config.port, () => {
     console.log(`===========================================================`);
-    console.log(`  Azure AI Foundry Avatar Server running on port ${config.port}`);
-    console.log(`  Mode: ${config.simulationMode ? 'SIMULATION / DEMO MODE' : 'LIVE AZURE CONNECTED'}`);
-    console.log(`  Foundry Agent ID: ${config.azureFoundry.agentId || '(Not set)'}`);
+    console.log(`  ARIA AI Avatar Server running on port ${config.port}`);
+    console.log(`  Mode: ${config.simulationMode ? 'SIMULATION / DEMO MODE' : 'LIVE AI CONNECTED'}`);
+    console.log(`  AI API URL: ${config.ai.apiUrl || '(Not configured)'}`);
+    console.log(`  AI Model: ${config.ai.modelName || 'gpt-4o'}`);
     console.log(`===========================================================`);
   });
 };

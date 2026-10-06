@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { ChatMessage, LanguageCode } from '../types';
-import { Send, Trash2, Bot, User, Sparkles, ExternalLink } from 'lucide-react';
 
 interface ChatPanelProps {
   messages: ChatMessage[];
@@ -9,158 +8,336 @@ interface ChatPanelProps {
   onSendMessage: (text: string) => void;
   onClearChat: () => void;
   currentLanguage: LanguageCode;
+  isProcessing?: boolean;
 }
+
+const SUGGESTED_PROMPTS = [
+  { icon: '👋', text: 'Hello, introduce yourself', label: 'Greet ARIA' },
+  { icon: '🧠', text: 'What can you help me with?', label: 'Capabilities' },
+  { icon: '🚀', text: 'Tell me something interesting', label: 'Surprise me' },
+];
 
 export const ChatPanel: React.FC<ChatPanelProps> = ({
   messages,
   interimTranscript,
   onSendMessage,
   onClearChat,
+  isProcessing = false,
 }) => {
   const [inputText, setInputText] = useState('');
+  const [isFocused, setIsFocused] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, interimTranscript]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim()) return;
+    if (!inputText.trim() || isProcessing) return;
     onSendMessage(inputText.trim());
     setInputText('');
   };
 
-  const handlePromptClick = (prompt: string) => {
-    onSendMessage(prompt);
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e as any);
+    }
   };
 
+  const isEmpty = messages.length === 0 && !interimTranscript;
+
   return (
-    <div className="h-full flex flex-col glass-panel rounded-2xl border border-slate-800/80 overflow-hidden shadow-2xl">
+    <div
+      className="h-full flex flex-col rounded-3xl overflow-hidden"
+      style={{
+        background: 'rgba(8,13,26,0.75)',
+        backdropFilter: 'blur(20px)',
+        border: '1px solid rgba(255,255,255,0.07)',
+        boxShadow: '0 24px 48px -12px rgba(0,0,0,0.6)',
+      }}
+    >
       {/* Panel Header */}
-      <div className="px-5 py-3.5 border-b border-slate-800/80 flex items-center justify-between bg-slate-950/40">
-        <div className="flex items-center gap-2">
-          <Bot className="w-4 h-4 text-azure-400" />
-          <h2 className="text-xs font-semibold text-slate-200 uppercase tracking-wider">
-            Conversation History
-          </h2>
+      <div
+        className="px-5 py-3.5 flex items-center justify-between flex-shrink-0"
+        style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+      >
+        <div className="flex items-center gap-2.5">
+          <div
+            className="w-7 h-7 rounded-lg flex items-center justify-center"
+            style={{ background: 'rgba(79,156,249,0.12)', border: '1px solid rgba(79,156,249,0.2)' }}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="#4f9cf9" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round"
+                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+              />
+            </svg>
+          </div>
+          <div>
+            <h2 className="text-xs font-semibold" style={{ color: '#e2e8f0' }}>Conversation</h2>
+            {messages.length > 0 && (
+              <p className="text-[10px] mt-0.5" style={{ color: '#4a5568' }}>
+                {messages.length} message{messages.length !== 1 ? 's' : ''}
+              </p>
+            )}
+          </div>
         </div>
+
         {messages.length > 0 && (
           <button
+            id="clear-chat-btn"
             onClick={onClearChat}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-800/60 transition-colors"
-            title="Clear Chat"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-200"
+            style={{
+              color: '#64748b',
+              background: 'transparent',
+              border: '1px solid transparent',
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.color = '#f87171';
+              (e.currentTarget as HTMLElement).style.background = 'rgba(248,113,113,0.08)';
+              (e.currentTarget as HTMLElement).style.borderColor = 'rgba(248,113,113,0.2)';
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.color = '#64748b';
+              (e.currentTarget as HTMLElement).style.background = 'transparent';
+              (e.currentTarget as HTMLElement).style.borderColor = 'transparent';
+            }}
+            title="Clear chat"
           >
-            <Trash2 className="w-3.5 h-3.5" />
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            Clear
           </button>
         )}
       </div>
 
-      {/* Messages Stream Container */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 text-sm">
-        {messages.length === 0 && !interimTranscript && (
-          <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400">
-            <div className="w-12 h-12 rounded-2xl bg-azure-900/20 border border-azure-500/20 flex items-center justify-center mb-3 text-azure-400">
-              <Sparkles className="w-6 h-6" />
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4" style={{ fontSize: '13px' }}>
+        {isEmpty && (
+          <div className="h-full flex flex-col items-center justify-center text-center p-6 animate-slide-up">
+            {/* Empty state icon */}
+            <div
+              className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
+              style={{
+                background: 'linear-gradient(135deg, rgba(79,156,249,0.15) 0%, rgba(167,139,250,0.1) 100%)',
+                border: '1px solid rgba(79,156,249,0.2)',
+              }}
+            >
+              <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" fill="rgba(79,156,249,0.3)" />
+                <path d="M9.5 9a2.5 2.5 0 015 0c0 1.5-2.5 3-2.5 3M12 17h.01" stroke="#4f9cf9" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
             </div>
-            <h3 className="text-sm font-medium text-slate-200 mb-1">
-              Start Conversation
+
+            <h3 className="text-sm font-semibold mb-1.5" style={{ color: '#e2e8f0' }}>
+              Start talking with ARIA
             </h3>
-            <p className="text-xs text-slate-400 max-w-xs mb-4">
-              Click <strong className="text-slate-200">Start</strong> at the bottom to speak directly with the AI Avatar, or pick a suggested query below.
+            <p className="text-xs mb-6 max-w-xs leading-relaxed" style={{ color: '#4a5568' }}>
+              Press <strong style={{ color: '#8b9cb8' }}>Start</strong> to speak, or type a message below
             </p>
 
-            <div className="w-full space-y-2 text-left">
-              <p className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider">
-                Suggested Prompts
+            {/* Suggested prompts */}
+            <div className="w-full space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-widest mb-3" style={{ color: '#2d3748' }}>
+                Try asking
               </p>
-              {[
-                'What are your enterprise AI capabilities?',
-                'Tell me about your Azure AI Search integration',
-                'नमस्ते, आप कैसे सहायता कर सकते हैं?',
-              ].map((prompt, idx) => (
+              {SUGGESTED_PROMPTS.map((prompt, idx) => (
                 <button
                   key={idx}
-                  onClick={() => handlePromptClick(prompt)}
-                  className="w-full text-left p-2.5 rounded-xl bg-slate-900/60 hover:bg-slate-800/80 border border-slate-800/80 text-xs text-slate-300 transition-all duration-200 hover:border-azure-500/40"
+                  onClick={() => onSendMessage(prompt.text)}
+                  className="w-full text-left p-3 rounded-xl transition-all duration-200 group"
+                  style={{
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.background = 'rgba(79,156,249,0.08)';
+                    (e.currentTarget as HTMLElement).style.borderColor = 'rgba(79,156,249,0.2)';
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)';
+                    (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.06)';
+                  }}
                 >
-                  {prompt}
+                  <div className="flex items-center gap-3">
+                    <span className="text-base">{prompt.icon}</span>
+                    <div>
+                      <div className="text-[11px] font-medium" style={{ color: '#94a3b8' }}>
+                        {prompt.label}
+                      </div>
+                      <div className="text-[11px] mt-0.5" style={{ color: '#4a5568' }}>
+                        "{prompt.text}"
+                      </div>
+                    </div>
+                    <svg className="w-3.5 h-3.5 ml-auto opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="#4f9cf9" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                    </svg>
+                  </div>
                 </button>
               ))}
             </div>
           </div>
         )}
 
-        {messages.map((msg) => (
+        {messages.map((msg, idx) => (
           <div
             key={msg.id}
-            className={`flex gap-3 ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+            className={`flex gap-2.5 animate-slide-up ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+            style={{ animationDelay: `${idx * 0.02}s` }}
           >
+            {/* Assistant avatar */}
             {msg.sender === 'assistant' && (
-              <div className="w-7 h-7 rounded-xl bg-azure-600/20 border border-azure-500/30 flex items-center justify-center flex-shrink-0 text-azure-400 mt-1">
-                <Bot className="w-4 h-4" />
+              <div
+                className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0 mt-1"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(79,156,249,0.2) 0%, rgba(167,139,250,0.15) 100%)',
+                  border: '1px solid rgba(79,156,249,0.25)',
+                }}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 20 20">
+                  <circle cx="10" cy="10" r="3" fill="#4f9cf9" />
+                  <path d="M10 3v2M10 15v2M3 10h2M15 10h2" stroke="#6366f1" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
               </div>
             )}
 
-            <div
-              className={`max-w-[85%] rounded-2xl p-3.5 shadow-md ${
-                msg.sender === 'user'
-                  ? 'bg-azure-600 text-white rounded-br-none'
-                  : 'bg-slate-900/90 text-slate-200 border border-slate-800 rounded-bl-none'
-              }`}
-            >
-              <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1 gap-2">
-                <span className="font-semibold text-slate-300">
-                  {msg.sender === 'user' ? 'You' : 'Foundry Agent'}
+            <div className={`max-w-[82%] ${msg.sender === 'user' ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
+              {/* Sender name + time */}
+              <div className={`flex items-center gap-2 px-1 ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <span className="text-[10px] font-semibold" style={{ color: msg.sender === 'user' ? '#60a5fa' : '#a78bfa' }}>
+                  {msg.sender === 'user' ? 'You' : 'ARIA'}
                 </span>
-                <span>{msg.timestamp}</span>
+                <span className="text-[10px]" style={{ color: '#2d3748' }}>{msg.timestamp}</span>
               </div>
 
-              <div className="prose prose-invert prose-xs leading-relaxed max-w-none">
-                <ReactMarkdown>{msg.content}</ReactMarkdown>
-              </div>
+              {/* Bubble */}
+              <div
+                className="rounded-2xl px-4 py-3 leading-relaxed"
+                style={msg.sender === 'user'
+                  ? {
+                    background: 'linear-gradient(135deg, rgba(79,156,249,0.18) 0%, rgba(99,102,241,0.12) 100%)',
+                    border: '1px solid rgba(79,156,249,0.22)',
+                    borderBottomRightRadius: '6px',
+                    color: '#e2e8f0',
+                  }
+                  : {
+                    background: 'rgba(13,21,38,0.9)',
+                    border: '1px solid rgba(255,255,255,0.07)',
+                    borderBottomLeftRadius: '6px',
+                    color: '#cbd5e1',
+                  }
+                }
+              >
+                <div className="prose prose-invert prose-xs max-w-none text-inherit">
+                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                </div>
 
-              {/* Citations if available from Azure AI Search */}
-              {msg.citations && msg.citations.length > 0 && (
-                <div className="mt-2.5 pt-2 border-t border-slate-800 text-[11px] text-slate-400">
-                  <span className="font-semibold text-slate-300">Sources:</span>
-                  <div className="flex flex-wrap gap-1.5 mt-1">
+                {/* Citations */}
+                {msg.citations && msg.citations.length > 0 && (
+                  <div className="mt-2.5 pt-2 flex flex-wrap gap-1.5" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
                     {msg.citations.map((c, i) => (
                       <a
                         key={i}
                         href={c.url || '#'}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-azure-300 border border-slate-700"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] transition-colors"
+                        style={{
+                          background: 'rgba(79,156,249,0.1)',
+                          border: '1px solid rgba(79,156,249,0.2)',
+                          color: '#60a5fa',
+                        }}
                       >
-                        <ExternalLink className="w-2.5 h-2.5" />
+                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
                         {c.title}
                       </a>
                     ))}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
+            {/* User avatar */}
             {msg.sender === 'user' && (
-              <div className="w-7 h-7 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center flex-shrink-0 text-slate-300 mt-1">
-                <User className="w-4 h-4" />
+              <div
+                className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0 mt-1"
+                style={{
+                  background: 'rgba(96,165,250,0.12)',
+                  border: '1px solid rgba(96,165,250,0.2)',
+                }}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="#60a5fa" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                </svg>
               </div>
             )}
           </div>
         ))}
 
-        {/* Interim STT Live Transcript Preview */}
+        {/* Processing indicator */}
+        {isProcessing && !interimTranscript && (
+          <div className="flex gap-2.5 justify-start animate-slide-up">
+            <div
+              className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0 mt-1"
+              style={{
+                background: 'linear-gradient(135deg, rgba(167,139,250,0.2) 0%, rgba(99,102,241,0.15) 100%)',
+                border: '1px solid rgba(167,139,250,0.25)',
+              }}
+            >
+              <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="9" stroke="#a78bfa" strokeWidth="1.5" strokeDasharray="4 4" />
+              </svg>
+            </div>
+            <div
+              className="rounded-2xl px-4 py-3 flex items-center gap-2"
+              style={{
+                background: 'rgba(13,21,38,0.9)',
+                border: '1px solid rgba(167,139,250,0.15)',
+                borderBottomLeftRadius: '6px',
+              }}
+            >
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="w-1.5 h-1.5 rounded-full"
+                  style={{
+                    background: '#a78bfa',
+                    animation: `wave-bar 1s ease-in-out infinite`,
+                    animationDelay: `${i * 0.18}s`,
+                    '--wave-duration': '0.9s',
+                  } as React.CSSProperties}
+                />
+              ))}
+              <span className="text-xs ml-1" style={{ color: '#64748b' }}>ARIA is thinking...</span>
+            </div>
+          </div>
+        )}
+
+        {/* Interim transcript */}
         {interimTranscript && (
-          <div className="flex gap-3 justify-end opacity-80 animate-pulse">
-            <div className="max-w-[85%] rounded-2xl p-3 bg-azure-900/40 text-azure-200 border border-azure-500/30 italic text-xs">
-              <span className="text-[10px] uppercase font-semibold text-azure-400 block mb-0.5">
-                Listening...
-              </span>
+          <div className="flex justify-end animate-slide-up">
+            <div
+              className="max-w-[82%] rounded-2xl px-4 py-3 italic text-xs"
+              style={{
+                background: 'rgba(45,212,191,0.08)',
+                border: '1px solid rgba(45,212,191,0.2)',
+                borderBottomRightRadius: '6px',
+                color: '#5eead4',
+              }}
+            >
+              <div className="flex items-center gap-1.5 mb-1">
+                <span
+                  className="w-1.5 h-1.5 rounded-full"
+                  style={{ background: '#2dd4bf', boxShadow: '0 0 6px #2dd4bf', animation: 'ring-pulse 1s ease-in-out infinite' }}
+                />
+                <span className="text-[10px] font-semibold not-italic" style={{ color: '#2dd4bf' }}>Listening...</span>
+              </div>
               "{interimTranscript}"
             </div>
           </div>
@@ -169,22 +346,59 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Message Input Box */}
-      <form onSubmit={handleSubmit} className="p-3 border-t border-slate-800/80 bg-slate-950/60">
-        <div className="relative flex items-center">
+      {/* Input Box */}
+      <form
+        onSubmit={handleSubmit}
+        className="p-3 flex-shrink-0"
+        style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}
+      >
+        <div
+          className="flex items-center gap-2 rounded-2xl px-3 py-2 transition-all duration-200"
+          style={{
+            background: isFocused ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.04)',
+            border: isFocused ? '1px solid rgba(79,156,249,0.4)' : '1px solid rgba(255,255,255,0.07)',
+            boxShadow: isFocused ? '0 0 0 3px rgba(79,156,249,0.08)' : 'none',
+          }}
+        >
           <input
+            ref={inputRef}
+            id="chat-input"
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            placeholder="Type a message..."
-            className="w-full pl-4 pr-11 py-2.5 bg-slate-900/90 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-azure-500/60 transition-colors"
+            onKeyDown={handleKeyDown}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            placeholder="Type a message or use voice..."
+            className="flex-1 bg-transparent outline-none text-xs"
+            style={{ color: '#e2e8f0', caretColor: '#4f9cf9' }}
+            disabled={isProcessing}
           />
           <button
+            id="send-message-btn"
             type="submit"
-            disabled={!inputText.trim()}
-            className="absolute right-1.5 p-1.5 rounded-lg bg-azure-600 text-white disabled:opacity-30 disabled:bg-slate-800 transition-all hover:bg-azure-500"
+            disabled={!inputText.trim() || isProcessing}
+            className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 transition-all duration-200"
+            style={inputText.trim() && !isProcessing
+              ? {
+                background: 'linear-gradient(135deg, #4f9cf9, #6366f1)',
+                boxShadow: '0 2px 12px rgba(79,156,249,0.4)',
+              }
+              : {
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.07)',
+              }
+            }
           >
-            <Send className="w-3.5 h-3.5" />
+            <svg
+              className="w-3.5 h-3.5 transition-all"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke={inputText.trim() && !isProcessing ? 'white' : '#4a5568'}
+              strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+            </svg>
           </button>
         </div>
       </form>

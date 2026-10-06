@@ -1,57 +1,64 @@
 import { Router } from 'express';
-import { createFoundryThread, sendFoundryMessage } from '../services/azureFoundry';
+import { sendAIMessage, createSession, clearSession } from '../services/aiService';
 import { MessageModel } from '../services/database';
 import { config } from '../config/env';
 
 const router = Router();
 
-// Create new Assistant Thread
-router.post('/thread', async (req, res) => {
+// Create new session
+router.post('/session', async (req, res) => {
   try {
-    const threadId = await createFoundryThread();
-    res.json({ success: true, threadId });
+    const sessionId = createSession();
+    res.json({ success: true, sessionId });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Send message to Azure AI Foundry Agent
+// Send message to AI
 router.post('/message', async (req, res) => {
   try {
-    const { threadId, message, language = 'en' } = req.body;
+    const { sessionId, message, language = 'en' } = req.body;
 
-    if (!message || !threadId) {
-      return res.status(400).json({ success: false, error: 'threadId and message are required' });
+    if (!message || !sessionId) {
+      return res.status(400).json({ success: false, error: 'sessionId and message are required' });
     }
 
-    const agentResult = await sendFoundryMessage(threadId, message, language);
+    const result = await sendAIMessage(sessionId, message, language);
 
     // Save to DB if enabled
     if (config.cosmosDb.enabled) {
       try {
         await MessageModel.create({
-          threadId,
+          threadId: sessionId,
           sender: 'user',
           content: message,
           language,
         });
         await MessageModel.create({
-          threadId,
+          threadId: sessionId,
           sender: 'assistant',
-          content: agentResult.response,
+          content: result.response,
           language,
         });
       } catch (dbErr) {
-        console.warn('[DB] Failed to save conversation history record:', dbErr);
+        console.warn('[DB] Failed to save conversation history:', dbErr);
       }
     }
 
-    res.json({
-      success: true,
-      ...agentResult,
-    });
+    res.json({ success: true, ...result });
   } catch (error: any) {
     console.error('[Route agent/message] Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Clear session history
+router.delete('/session/:sessionId', (req, res) => {
+  try {
+    clearSession(req.params.sessionId);
+    res.json({ success: true });
+  } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
 });

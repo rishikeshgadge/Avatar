@@ -12,32 +12,32 @@ export async function fetchServerHealth(): Promise<ServerHealth> {
     return {
       status: 'offline',
       simulationMode: true,
-      azureFoundryConnected: false,
+      aiConnected: false,
       azureSpeechConnected: false,
       cosmosDbConnected: false,
     };
   }
 }
 
-export async function createSessionThread(): Promise<string> {
+export async function createSession(): Promise<string> {
   try {
-    const res = await fetch(`${API_BASE_URL}/agent/thread`, {
+    const res = await fetch(`${API_BASE_URL}/agent/session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
     });
     const data = await res.json();
-    if (data.success) return data.threadId;
+    if (data.success) return data.sessionId;
   } catch (err) {
-    console.error('Failed to create thread:', err);
+    console.error('Failed to create session:', err);
   }
-  return `thread_fallback_${Date.now()}`;
+  return `session_fallback_${Date.now()}`;
 }
 
-export async function sendUserMessage(threadId: string, message: string, language: string = 'en') {
+export async function sendUserMessage(sessionId: string, message: string, language: string = 'en') {
   const res = await fetch(`${API_BASE_URL}/agent/message`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ threadId, message, language }),
+    body: JSON.stringify({ sessionId, message, language }),
   });
   if (!res.ok) {
     throw new Error(`Server returned error: ${res.statusText}`);
@@ -56,15 +56,15 @@ export async function fetchSpeechConfig(): Promise<SpeechTokenConfig> {
   return {
     token: null,
     region: 'eastus',
-    avatarCharacter: 'lisa',
-    avatarStyle: 'graceful',
+    avatarCharacter: 'aria',
+    avatarStyle: 'casual',
     isSimulated: true,
   };
 }
 
-export async function fetchConversationHistory(threadId: string) {
+export async function fetchConversationHistory(sessionId: string) {
   try {
-    const res = await fetch(`${API_BASE_URL}/history/${threadId}`);
+    const res = await fetch(`${API_BASE_URL}/history/${sessionId}`);
     return await res.json();
   } catch (err) {
     return { success: false, messages: [] };

@@ -31,7 +31,9 @@ export interface SpeechTokenConfig {
 export interface ServerHealth {
   status: string;
   simulationMode: boolean;
-  azureFoundryConnected: boolean;
+  aiConnected: boolean;
+  azureFoundryConnected?: boolean; // legacy compat
   azureSpeechConnected: boolean;
   cosmosDbConnected: boolean;
+  aiModel?: string;
 }
